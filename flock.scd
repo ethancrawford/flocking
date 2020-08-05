@@ -16,8 +16,7 @@ SynthDef("sonic-pi-flock",
 		[attack, decay, sustain, release],
 		env_curve);
 
-   snd = SinOsc.ar([freq,freq],0,0.5);
-   snd = Flock(bufnum, snd);
-   snd = snd * EnvGen.kr(env, doneAction: 2);
+    snd = Flock.ar(b.bufnum, [200, 300], 0.0);
+    //snd = snd * EnvGen.kr(env, doneAction: 2);
     Out.ar(out_bus, snd)}
-    ).writeDefFile("/Users/ethan/Desktop/sc-synths");
+).writeDefFile("/Users/ethan/Desktop/sc-synths");

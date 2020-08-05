@@ -4,7 +4,9 @@ get_filename_component(PROJECT ${FILENAME} NAME_WE) #automatically sets project 
 # set(PROJECT "my_name") #alternatively set project name manually
 message(STATUS "Project name is ${PROJECT}")
 project (${PROJECT})
+
 list(APPEND SOURCES Flock.cpp Boid.cpp Boid.hpp BoidFlock.cpp BoidFlock.hpp Pvector.cpp Pvector.hpp)
+
 include_directories(${SC_PATH}/include/plugin_interface)
 include_directories(${SC_PATH}/include/common)
 include_directories(${SC_PATH}/common)

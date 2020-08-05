@@ -1,13 +1,9 @@
+// without mul and add.
 Flock : UGen {
-    *ar { |bufnum = 0, freq|
-        ^this.multiNew('audio', bufnum, freq);
+    *ar { arg bufnum = 0, freq = 440.0, iphase = 0.0;
+        ^this.multiNew('audio', bufnum, freq, iphase)
     }
-    checkInputs {
-        [1].do { |i|
-            (inputs[i].rate != 'audio').if {
-                ^"input % is not audio rate".format(i).throw;
-            };
-        };
-        ^this.checkValidInputs;
+    *kr { arg bufnum = 0, freq = 440.0, iphase = 0.0;
+        ^this.multiNew('control', bufnum, freq, iphase)
     }
 }
