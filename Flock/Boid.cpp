@@ -15,10 +15,11 @@
 // ======== Boid Functions from Boid.h =========== //
 // =============================================== //
 
-Boid::Boid(float x, float y)
+Boid::Boid(float x, float y, float vx, float vy)
 {
     acceleration = Pvector(0, 0);
-    velocity = Pvector(rand()%3 - 2, rand()%3 - 2);
+    //velocity = Pvector(rand()%3 - 2, rand()%3 - 2);
+    velocity = Pvector(vx, vy);
     location = Pvector(x, y);
     maxSpeed = 3.5;
     maxForce = 0.5;

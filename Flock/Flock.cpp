@@ -24,7 +24,8 @@ static InterfaceTable *ft;
   } else {                                                \
     buf = world->mSndBufs + bufnum;                       \
   }                                                       \
-  float* bufData __attribute__((__unused__)) = buf->data;
+  float* bufData __attribute__((__unused__)) = buf->data; \
+  uint32 bufSamples __attribute__((__unused__)) = buf->samples;
 
 // declare struct to hold unit generator state
 struct Flock : public SCUnit{
@@ -35,134 +36,92 @@ struct Flock : public SCUnit{
   // 3. calculate one sample of output.
 public:
   Flock() {
-    const Unit* unit = this;
     CTOR_GET_BUF;
-
+    m_seed = IN0(3);
+    rand_buf = bufData;
+    rand_buf_size = bufSamples;
     for (int i = 0; i < 20; i++) {
-      float x = bufData[i];
-      float y = bufData[i + 1];
-      Boid b((WIDTH / 2.0) + x, (HEIGHT / 2.0) + y);
+      float vx = cos(buf_rand(i));
+      float vy = sin(buf_rand(i + 1));
+      Boid b((WIDTH / 2.0), (HEIGHT / 2.0), vx, vy);
       // Adding the boid to the flock
       flock.addBoid(b);
     }
 
     // 1. set the calculation function.
-    if (isAudioRateIn(1)) {
-      // if the frequency argument is audio rate
-      set_calc_function<Flock,&Flock::next_a>();
-    } else {
-      // if thene frequency argument is control rate (or a scalar).
-      set_calc_function<Flock,&Flock::next_k>();
-    }
+    set_calc_function<Flock,&Flock::next_k>();
+    m_phase = (int32)(m_phasein * m_radtoinc);
 
     // 2. initialize the unit generator state variables.
     // initialize a constant for multiplying the frequency
-    mFreqMul = 2.0 * sampleDur();
-    // get initial phase of oscillator
-    mPhase = in0(2);
+    m_phasein = IN0(2);
+    int tableSize2 = ft->mSineSize;
+    m_radtoinc = tableSize2 * (rtwopi * 65536.0);
+    m_cpstoinc = tableSize2 * SAMPLEDUR * 65536.0;
+    m_lomask = (tableSize2 - 1) << 3;
 
     // 3. calculate one sample of output.
-    if (isAudioRateIn(1)) {
-      next_a(1);
-    } else {
-      next_k(1);
-    }
+    next_k(1);
   }
 
 private:
-  double mPhase; // phase of the oscillator, from -1 to 1.
-  float mFreqMul; // a constant for multiplying frequency
   float m_fbufnum;
   SndBuf *m_buf;
   const float WIDTH = 1000.0;
   const float HEIGHT = 1000.0;
   BoidFlock flock;
-
+  int32 m_phase;
+  float m_phasein;
+  double m_radtoinc;
+  double m_cpstoinc;
+  int32 m_lomask;
+  int m_seed;
+  float *rand_buf;
+  int rand_buf_size;
+  const Unit* unit = this;
   //////////////////////////////////////////////////////////////////
 
   // The calculation function executes once per control period
   // which is typically 64 samples.
 
   // calculation function for an audio rate frequency argument
-  void next_a(int inNumSamples)
-  {
-    // get the pointer to the output buffer
-    float *outBuf = out(0);
-
-    // get the pointer to the input buffer
-    const float *freq = in(1);
-
-    // get phase and freqmul constant from struct and store it in a
-    // local variable.
-    // The optimizer will cause them to be loaded it into a register.
-    float freqmul = mFreqMul;
-    double phase = mPhase;
-    flock.flocking();
-
-    // perform a loop for the number of samples in the control period.
-    // If this unit is audio rate then inNumSamples will be 64 or whatever
-    // the block size is. If this unit is control rate then inNumSamples will
-    // be 1.
-    for (int i=0; i < inNumSamples; ++i)
-      {
-        // out must be written last for in place operation
-        float z = phase;
-        phase += freq[i] * freqmul;
-
-        // these if statements wrap the phase a +1 or -1.
-        if (phase >= 1.f) phase -= 2.f;
-        else if (phase <= -1.f) phase += 2.f;
-
-        // write the output
-        outBuf[i] = z;
-      }
-
-    // store the phase back to the struct
-    mPhase = phase;
-  }
 
   //////////////////////////////////////////////////////////////////
 
   // calculation function for a control rate frequency argument
   void next_k(int inNumSamples)
   {
+    float *table0 = ft->mSineWavetable;
+    float *table1 = table0 + 1;
     // get the pointer to the output buffer
-    float *outBuf = out(0);
+    float *outBuf = OUT(0);
 
     // freq is control rate, so calculate it once.
-    float freq = in0(1) * mFreqMul;
+    float freqin = IN0(1);
 
     // get phase from struct and store it in a local variable.
     // The optimizer will cause it to be loaded it into a register.
-    double phase = mPhase;
+    float phasein = IN0(2);
+    int32 phase = m_phase;
+    int32 lomask = m_lomask;
 
     flock.flocking();
+    int32 freq = (int32)(m_cpstoinc * (freqin + (flock.getBoid(0).location.x / 10.0)));
+    int32 phaseinc = freq + (int32)(CALCSLOPE(phasein, m_phasein) * m_radtoinc);
+    m_phasein = phasein;
 
-    // since the frequency is not changing then we can simplify the loops
-    // by separating the cases of positive or negative frequencies.
-    // This will make them run faster because there is less code inside the loop.
-    if (freq >= 0.f) {
-      // positive frequencies
-      for (int i=0; i < inNumSamples; ++i)
-        {
-          outBuf[i] = phase * 0.2;
-          phase += (freq + (flock.getBoid(0).location.x / 2000.0));
-          phase += (freq + (flock.getBoid(1).location.x / 2000.0));
-          if (phase >= 1.f) phase -= 2.f;
-        }
-    } else {
-      // negative frequencies
-      for (int i=0; i < inNumSamples; ++i)
-        {
-          outBuf[i] = phase * 0.2;
-          phase += (freq + (flock.getBoid(0).location.x / 2000.0));
-          phase += (freq + (flock.getBoid(1).location.x / 2000.0));
-          if (phase <= -1.f) phase += 2.f;
-        }
+    for (int i = 0; i < inNumSamples; ++i) {
+
+      // phase += (freq + (flock.getBoid(0).location.x / 2000.0));
+      // phase += (freq + (flock.getBoid(1).location.x / 2000.0));
+      outBuf[i] = lookupi1(table0, table1, phase, lomask);
+      phase += phaseinc;
     }
+    m_phase = phase;
+  }
 
-    // store the phase back to the struct
-    mPhase = phase;
+  float buf_rand(int idx) {
+    return rand_buf[(idx + m_seed) % rand_buf_size];
   }
 };
 

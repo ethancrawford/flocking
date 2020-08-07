@@ -38,7 +38,7 @@ public:
     float maxSpeed;
     float maxForce;
   //Boid() {}
-    Boid(float x, float y);
+    Boid(float x, float y, float vx, float vy);
     Boid(float x, float y, bool predCheck);
     void applyForce(Pvector force);
     // Three Laws that boids follow
