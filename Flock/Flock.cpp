@@ -106,6 +106,9 @@ private:
     int32 lomask = m_lomask;
 
     flock.flocking();
+
+    // This works fine for manipulating a waveform containing a single frequency
+    // I don't know how to properly add multiple frequencies in and manipulate those too
     int32 freq = (int32)(m_cpstoinc * (freqin + (flock.getBoid(0).location.x / 10.0)));
     int32 phaseinc = freq + (int32)(CALCSLOPE(phasein, m_phasein) * m_radtoinc);
     m_phasein = phasein;
