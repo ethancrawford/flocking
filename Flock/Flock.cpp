@@ -112,8 +112,6 @@ private:
 
     for (int i = 0; i < inNumSamples; ++i) {
 
-      // phase += (freq + (flock.getBoid(0).location.x / 2000.0));
-      // phase += (freq + (flock.getBoid(1).location.x / 2000.0));
       outBuf[i] = lookupi1(table0, table1, phase, lomask);
       phase += phaseinc;
     }
