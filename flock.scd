@@ -1,7 +1,7 @@
 b = Buffer.read(s, "/Users/ethan/repos/sonic-pi/main/etc/buffers/rand-stream.wav");
 
 SynthDef("sonic-pi-flock",
-             {|bufnum = 0,
+             {|bufnum = 0, num_boids = 20,
     	note = 52, amp = 1, amp_slide = 0, amp_slide_shape = 1, amp_slide_curve = 0,
 	pan = 0, pan_slide = 0, pan_slide_shape = 1, pan_slide_curve = 0,
 	attack = 0, decay = 0, sustain = 0, release = 1,
@@ -19,8 +19,8 @@ SynthDef("sonic-pi-flock",
 		[attack, decay, sustain, release],
 		env_curve);
 
-    snd = Flock.ar(b.bufnum, freq, 0.0, seed);
-    snd = snd * 0.05 * EnvGen.kr(env, doneAction: 2);
+    snd = Flock.ar(b.bufnum, freq, 0.0, seed, num_boids);
+    snd = snd * EnvGen.kr(env, doneAction: 2);
     Out.ar(out_bus, snd)}
 ).send(s)
 
