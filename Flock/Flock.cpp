@@ -27,6 +27,14 @@ static InterfaceTable *ft;
   float* bufData __attribute__((__unused__)) = buf->data; \
   uint32 bufSamples __attribute__((__unused__)) = buf->samples;
 
+struct SinWave {
+  int32 m_phase;
+  int32 phase;
+  int32 temp_freq;
+  int32 phaseinc;
+  float sin_val;
+};
+
 // declare struct to hold unit generator state
 struct Flock : public SCUnit{
 
@@ -41,7 +49,7 @@ public:
     m_num_boids = IN0(4);
     rand_buf = bufData;
     rand_buf_size = bufSamples;
-    for (int i = 0; i < 20; i++) {
+    for (int i = 0; i < m_num_boids; i++) {
       float vx = cos(buf_rand(i));
       float vy = sin(buf_rand(i + 1));
       Boid b((WIDTH / 2.0), (HEIGHT / 2.0), vx, vy);
@@ -51,31 +59,33 @@ public:
 
     // 1. set the calculation function.
     set_calc_function<Flock,&Flock::next_k>();
+    m_phasein = IN0(2);
 
     // 2. initialize the unit generator state variables.
     // initialize a constant for multiplying the frequency
-    m_phasein = IN0(2);
     int tableSize2 = ft->mSineSize;
     m_radtoinc = tableSize2 * (rtwopi * 65536.0);
     m_cpstoinc = tableSize2 * SAMPLEDUR * 65536.0;
-    m_phase = (int32*)RTAlloc(unit->mWorld, m_num_boids * sizeof(int32));
-    phase = (int32*)RTAlloc(unit->mWorld, m_num_boids * sizeof(int32));
-    sin_val = (float*)RTAlloc(unit->mWorld, m_num_boids * sizeof(float));
-    phaseinc = (int32*)RTAlloc(unit->mWorld, m_num_boids * sizeof(int32));
-    for(int i = 0; i < m_num_boids; i++){
-      m_phase[i] = (int32)(m_phasein * m_radtoinc);
-    }
     m_lomask = (tableSize2 - 1) << 3;
+    waves = (SinWave*)RTAlloc(unit->mWorld, m_num_boids * sizeof(SinWave));
+    for(int i = 0; i < m_num_boids; i++){
+      waves[i].m_phase = (int32)(m_phasein * m_radtoinc);
+    }
+    m_phase = (int32)(m_phasein * m_radtoinc);
+
+    // This loop is a copy of a similar one in the next_k function below.
+    // Running exactly the same loop in next_k crashes scsynth, but it works here.
+    // I have no idea why.
+    for(int i = 0; i < m_num_boids; i++){
+      waves[i].phase = waves[i].m_phase;
+    }
 
     // 3. calculate one sample of output.
     next_k(1);
   }
 
-  ~Flock() {
-    RTFree(unit->mWorld, m_phase);
-    RTFree(unit->mWorld, phase);
-    RTFree(unit->mWorld, sin_val);
-    RTFree(unit->mWorld, phaseinc);
+  ~Flock(){
+    RTFree(unit->mWorld, waves);
   }
 
 private:
@@ -84,7 +94,7 @@ private:
   const float WIDTH = 1000.0;
   const float HEIGHT = 1000.0;
   BoidFlock flock;
-  int32 *m_phase;
+  int32 m_phase;
   float m_phasein;
   double m_radtoinc;
   double m_cpstoinc;
@@ -94,9 +104,7 @@ private:
   float *rand_buf;
   int rand_buf_size;
   const Unit* unit = this;
-  int32 *phase;
-  float *sin_val;
-  int32 *phaseinc;
+  SinWave *waves;
   //////////////////////////////////////////////////////////////////
 
   // The calculation function executes once per control period
@@ -120,28 +128,39 @@ private:
     // get phase from struct and store it in a local variable.
     // The optimizer will cause it to be loaded it into a register.
     float phasein = IN0(2);
+    int32 phase = m_phase;
+
+    // If I uncomment this loop, it causes scsynth to crash. I have no idea why.
+    // for(int i = 0; i < m_num_boids; i++){
+    //   waves[i].phase = waves[i].m_phase;
+    // }
     int32 lomask = m_lomask;
 
     flock.flocking();
     float out_val = 0.0;
 
-    for(int i = 0; i < m_num_boids; i++){
-      phase[i] = m_phase[i];
+    int32 freq = (int32)(m_cpstoinc * (freqin + (flock.getBoid(0).location.x / 10.0)));
+    int32 phaseinc = freq + (int32)(CALCSLOPE(phasein, m_phasein) * m_radtoinc);
+    m_phasein = phasein;
 
-      int32 temp_freq = (int32)(m_cpstoinc * (freqin + (flock.getBoid(i).location.x / 10.0)));
-      phaseinc[i] = temp_freq + (int32)(CALCSLOPE(phasein, m_phasein) * m_radtoinc);
-      m_phasein = phasein;
+    for(int j = 0; j < m_num_boids; j++){
+      // waves[j].temp_freq = (int32)(m_cpstoinc * (freqin + (flock.getBoid(j).location.x / 10.0)));
+      // waves[j].phaseinc = waves[j].temp_freq + (int32)(CALCSLOPE(phasein, m_phasein) * m_radtoinc);
+      // m_phasein = phasein;
+      // waves[j].sin_val = lookupi1(table0, table1, waves[j].phase, lomask);
+      // out_val += (waves[j].sin_val * 0.05);
+      // waves[j].phase += waves[j].phaseinc;
+    }
 
-      for (int j = 0; j < inNumSamples; ++j) {
-        sin_val[i] = lookupi1(table0, table1, phase[i], lomask);
-        out_val += (sin_val[i] * 0.05);
-        phase[i] += phaseinc[i];
-      }
-      m_phase[i] = phase[i];
+    for (int i = 0; i < inNumSamples; ++i) {
+       outBuf[i] = lookupi1(table0, table1, phase, lomask);
+       phase += phaseinc;
+      //outBuf[i] = out_val;
     }
-    for(int i = 0; i < inNumSamples; ++i){
-      outBuf[i] = out_val;
-    }
+    m_phase = phase;
+    // for(int j = 0; j < m_num_boids; j++){
+    //   waves[j].m_phase = waves[j].phase;
+    // }
   }
 
   float buf_rand(int idx) {
